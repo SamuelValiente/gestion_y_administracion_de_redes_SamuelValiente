@@ -21,16 +21,16 @@ El script mantiene la misma estructura que el original. Al crear redes virtuales
 Comandos más importantes:
 
 **Ver el estado de todas las máquinas:**
-sudo python3 scripts/manage_vms.py status
+sudo python3 manage_vms.py status
 
 **Crear las redes y todas las máquinas:**
-sudo python3 scripts/manage_vms.py create all
+sudo python3 manage_vms.py create all
 
 **Apagar todo el laboratorio(forzado):**
-sudo python3 scripts/manage_vms.py stop all --force
+sudo python3 manage_vms.py stop all --force
 
 **Cambiar el arranque a disco (post-instalación):**
-sudo python3 scripts/manage_vms.py bootorder disk all
+sudo python3 manage_vms.py bootorder disk all
 
 **Borrar todo el entorno y limpiar los discos virtuales:**
-sudo python3 scripts/manage_vms.py delete all --force
+sudo python3 manage_vms.py delete all --force
