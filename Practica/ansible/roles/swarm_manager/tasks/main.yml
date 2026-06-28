@@ -1,0 +1,45 @@
+- name: Comprobar si Swarm está iniciado
+  ansible.builtin.shell: docker info | grep "Swarm"
+  register: swarm_status
+  changed_when: false
+
+- name: Inicializar el Swarm en el primer maestro
+  ansible.builtin.shell: docker swarm init --advertise-addr {{ ansible_host }}
+  when:
+    - "'Swarm: inactive' in swarm_status.stdout"
+    - "inventory_hostname == groups['master'][0]"
+
+- name: Obtener el Token de Manager
+  ansible.builtin.shell: docker swarm join-token -q manager
+  delegate_to: "{{ groups['master'][0] }}"
+  register: manager_token
+  changed_when: false
+
+- name: Unirse al Swarm como Manager adicional
+  ansible.builtin.shell:
+    cmd: "docker swarm join --token {{ manager_token.stdout }} {{ hostvars[groups['master'][0]]['ansible_host'] }}:2377"
+  when:
+    - "'Swarm: inactive' in swarm_status.stdout"
+    - inventory_hostname != groups['master'][0]
+
+# Todo lo del despliegue de wordpress a continuacion
+- name: Crear directorio para el stack WordPress
+  ansible.builtin.file:
+    path: /home/ansible/wordpress
+    state: directory
+    mode: '0755'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Copiar docker-compose del stack WordPress
+  ansible.builtin.template:
+    src: docker-compose.wordpress.j2
+    dest: /home/ansible/wordpress/docker-compose.yml
+    owner: ansible
+    group: ansible
+    mode: '0644'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Desplegar stack WordPress en el Swarm
+  ansible.builtin.shell:
+    cmd: docker stack deploy -c /home/ansible/wordpress/docker-compose.yml wordpress
+  when: inventory_hostname == groups['master'][0]

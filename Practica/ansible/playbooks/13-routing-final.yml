@@ -1,0 +1,95 @@
+
+# Desactivar cloud-init en todos los nodos afectados
+- name: Desactivar gestión de red por cloud-init
+  hosts: lvs:web:internal:router
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Deshabilitar cloud-init network config
+      ansible.builtin.copy:
+        dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+        content: "network: {config: disabled}\n"
+        mode: "0644"
+
+    - name: Hacer backup del netplan de cloud-init (si existe)
+      ansible.builtin.copy:
+        remote_src: true
+        src: /etc/netplan/50-cloud-init.yaml
+        dest: /etc/netplan/50-cloud-init.yaml.bak
+      ignore_errors: true
+
+    - name: Desactivar el netplan de cloud-init
+      ansible.builtin.command:
+        cmd: mv /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.disabled
+      args:
+        removes: /etc/netplan/50-cloud-init.yaml   # solo si existe
+
+    - name: Maskear servicios de cloud-init
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        masked: true
+        state: stopped
+      loop:
+        - cloud-init-local.service
+        - cloud-init.service
+        - cloud-config.service
+        - cloud-final.service
+      ignore_errors: true
+
+# Desplegar netplan estático por nodo (tus ficheros ya existentes)
+- name: Aplicar netplan definitivo en nodos con una interfaz de datos
+  hosts: lvs:web:internal:router
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Eliminar netplans anteriores del proyecto (evitar conflictos)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/netplan/01-routing.yaml
+        - /etc/netplan/01-routing-final.yaml
+
+    - name: Copiar fichero netplan definitivo del nodo
+      ansible.builtin.copy:
+        src: "files/netplan/{{ inventory_hostname }}.yaml"
+        dest: /etc/netplan/01-final.yaml
+        owner: root
+        group: root
+        mode: "0600"           # netplan exige 600 en Ubuntu 23.10+
+      notify: aplicar netplan
+
+    # Solo para web y lvs: eliminar gateway temporal del jumpstart
+    - name: Eliminar gateway temporal del jumpstart si sigue presente
+      ansible.builtin.command:
+        cmd: ip route del default via 192.168.1.1
+      ignore_errors: true
+      changed_when: false
+      when: "'lvs' in group_names or 'web' in group_names"
+      
+  handlers:
+    - name: aplicar netplan
+      ansible.builtin.command:
+        cmd: netplan apply
+
+#  Verificar conectividad entre main e internal
+- name: Verificar rutas entre main e internal
+  hosts: web
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Ping desde web hacia un master del cluster
+      ansible.builtin.command:
+        cmd: ping -c 2 -W 2 {{ hostvars[groups['master'][0]].ansible_host }}
+      register: ping_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: Mostrar resultado de conectividad
+      ansible.builtin.debug:
+        msg: >-
+          {% if ping_result.rc == 0 %}
+          ✅ web → cluster OK ({{ hostvars[groups['master'][0]].ansible_host }})
+          {% else %}
+          ❌ web → cluster SIN RESPUESTA — revisar rutas en router01
+          {% endif %}

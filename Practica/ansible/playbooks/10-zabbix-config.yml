@@ -1,0 +1,28 @@
+---
+- name: Esperar a que la API de Zabbix esté lista
+  hosts: monitor
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Esperar API Zabbix
+      ansible.builtin.wait_for:
+        host: 10.0.0.14
+        port: 80
+        delay: 10
+        timeout: 60
+
+- name: Configurar hosts, items y triggers en Zabbix
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    zabbix_api_host: "10.0.0.14"
+    ansible_user: Admin
+    ansible_httpapi_pass: zabbix
+    zabbix_httpapi_port: 80
+    zabbix_httpapi_use_ssl: false
+    zabbix_httpapi_validate_certs: false
+    ansible_network_os: community.zabbix.zabbix
+    ansible_zabbix_url_path: "zabbix"
+  roles:
+    - zabbix_config

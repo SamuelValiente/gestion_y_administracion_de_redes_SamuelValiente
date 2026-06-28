@@ -1,0 +1,35 @@
+#!/bin/bash
+# SNMP extend script para métricas de GlusterFS
+
+# Nombre del volumen GlusterFS a monitorizar
+VOLUME="{{ snmp_gluster_volume }}"
+
+PEER_STATUS=$(sudo gluster peer status 2>/dev/null)
+VOLUME_STATUS=$(sudo gluster volume status "$VOLUME" 2>/dev/null)
+VOLUME_INFO=$(sudo gluster volume info "$VOLUME" 2>/dev/null)
+
+if [ -z "$VOLUME_INFO" ]; then
+    echo "ERROR: no se puede obtener información del volumen $VOLUME"
+    exit 1
+fi
+
+# Número de peers conectados
+PEERS_CONNECTED=$(echo "$PEER_STATUS" | grep -c 'Peer in Cluster (Connected)')
+
+# Estado del volumen (1=Started, 0=Stopped)
+VOLUME_STARTED=$(echo "$VOLUME_INFO" | grep -c 'Status: Started')
+
+# Número de bricks online
+BRICKS_ONLINE=$(echo "$VOLUME_STATUS" | grep -c 'Online')
+
+# Número de bricks offline
+BRICKS_OFFLINE=$(echo "$VOLUME_STATUS" | grep -c 'Offline')
+
+# Número total de bricks
+BRICKS_TOTAL=$(echo "$VOLUME_INFO" | grep -c 'Brick[0-9]')
+
+echo "peers_connected=$PEERS_CONNECTED"
+echo "volume_started=$VOLUME_STARTED"
+echo "bricks_online=$BRICKS_ONLINE"
+echo "bricks_offline=$BRICKS_OFFLINE"
+echo "bricks_total=$BRICKS_TOTAL"

@@ -1,0 +1,16 @@
+---
+- name: Comprobar estado del Swarm
+  ansible.builtin.shell: docker info | grep "Swarm"
+  register: swarm_status
+  changed_when: false
+
+- name: Obtener el token de worker desde el líder
+  ansible.builtin.shell: docker swarm join-token -q worker
+  delegate_to: "{{ groups['master'][0] }}"
+  register: worker_token
+  changed_when: false
+
+- name: Unirse al swarm como worker
+  ansible.builtin.shell: 
+    cmd: "docker swarm join --token {{ worker_token.stdout }} {{ hostvars[groups['master'][0]]['ansible_host'] }}:2377"
+  when: "'Swarm: inactive' in swarm_status.stdout"

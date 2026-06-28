@@ -1,0 +1,62 @@
+---
+- name: Eliminar site default de Nginx
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Desplegar configuración del proxy para WordPress
+  ansible.builtin.template:
+    src: wordpress.conf.j2
+    dest: /etc/nginx/sites-available/wordpress.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload nginx
+
+- name: Activar site WordPress
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/wordpress.conf
+    dest: /etc/nginx/sites-enabled/wordpress.conf
+    state: link
+  notify: reload nginx
+
+- name: Validar configuración de Nginx
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  failed_when: false
+  register: nginx_test
+
+- name: Mostrar resultado de validación
+  ansible.builtin.debug:
+    msg: "{{ nginx_test.stderr }}"
+
+
+- name: Asegurar que Nginx está habilitado y arrancado
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: "DR: suprimir ARP para la VIP"
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop:
+    - net.ipv4.conf.all.arp_ignore
+    - net.ipv4.conf.all.arp_announce
+    - net.ipv4.conf.enp0s3.arp_ignore
+    - net.ipv4.conf.enp0s3.arp_announce
+
+- name: "DR: añadir VIP al loopback (runtime)"
+  ansible.builtin.command:
+    cmd: ip addr add {{ lvs_vip }}/32 dev lo label lo:vip
+  register: _vip
+  failed_when: 
+    - _vip.rc != 0
+    - "'RTNETLINK answers: File exists' not in _vip.stderr"
+    - "'Address already assigned' not in _vip.stderr"
+  changed_when: _vip.rc == 0

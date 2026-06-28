@@ -1,0 +1,52 @@
+main:
+  children:
+    router:
+      hosts:
+        router01:
+          ansible_host: 192.168.1.2
+          internal_ip: 10.0.0.2
+          ansible_user: ansible
+    lvs:
+      hosts:
+        lvs01:
+          ansible_host: 192.168.1.10
+          ansible_user: ansible
+    web:
+      hosts:
+        web01:
+          ansible_host: 192.168.1.11
+          ansible_user: ansible
+        web02:
+          ansible_host: 192.168.1.12
+          ansible_user: ansible
+internal:
+  children:
+    cluster:
+      children:
+        master:
+          hosts:
+            mst01:
+              ansible_host: 10.0.0.10
+              ansible_user: ansible
+            mst02:
+              ansible_host: 10.0.0.11
+              ansible_user: ansible
+        worker:
+          hosts:
+            wrk01:
+              ansible_host: 10.0.0.12
+              ansible_user: ansible
+            wrk02:
+              ansible_host: 10.0.0.13
+              ansible_user: ansible
+    monitor:
+      hosts:
+        mon01:
+          ansible_host: 10.0.0.14
+          ansible_user: ansible
+jumpstart:
+  hosts:
+    jumpstart01:
+      ansible_host: 192.168.1.1
+      internal_ip: 10.0.0.1
+      ansible_user: ansible

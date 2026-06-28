@@ -1,0 +1,38 @@
+#!/bin/bash
+# SNMP extend script para métricas de LVS (IPVS)
+
+IPVSADM=$(ipvsadm -L --stats 2>/dev/null)
+
+if [ -z "$IPVSADM" ]; then
+    echo "ERROR: no se puede obtener estadísticas de LVS"
+    exit 1
+fi
+
+# Conexiones activas totales
+ACTIVE=$(ipvsadm -L -n 2>/dev/null | awk 'NR>3 && /->/ {sum += $5} END {print sum+0}')
+
+# Conexiones inactivas totales
+INACTIVE=$(ipvsadm -L -n 2>/dev/null | awk 'NR>3 && /->/ {sum += $6} END {print sum+0}')
+
+# Total paquetes entrantes (acumulado de todos los servicios)
+PKTS_IN=$(echo "$IPVSADM" | awk 'NR>3 && /->/ {sum += $4} END {print sum+0}')
+
+# Total paquetes salientes
+PKTS_OUT=$(echo "$IPVSADM" | awk 'NR>3 && /->/ {sum += $5} END {print sum+0}')
+
+# Total bytes entrantes
+BYTES_IN=$(echo "$IPVSADM" | awk 'NR>3 && /->/ {sum += $6} END {print sum+0}')
+
+# Total bytes salientes
+BYTES_OUT=$(echo "$IPVSADM" | awk 'NR>3 && /->/ {sum += $7} END {print sum+0}')
+
+# Número de real servers registrados
+REAL_SERVERS=$(ipvsadm -L -n 2>/dev/null | grep -c '\->')
+
+echo "active_connections=$ACTIVE"
+echo "inactive_connections=$INACTIVE"
+echo "pkts_in=$PKTS_IN"
+echo "pkts_out=$PKTS_OUT"
+echo "bytes_in=$BYTES_IN"
+echo "bytes_out=$BYTES_OUT"
+echo "real_servers=$REAL_SERVERS"

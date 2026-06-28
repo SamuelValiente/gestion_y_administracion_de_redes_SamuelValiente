@@ -1,0 +1,12 @@
+127.0.0.1   localhost
+127.0.1.1   {{ inventory_hostname }}
+
+# Red main
+{% for host in groups['main'] %}
+{{ hostvars[host]['ansible_host'] }}   {{ host }}
+{% endfor %}
+
+# Red internal
+{% for host in groups['internal'] %}
+{{ hostvars[host]['ansible_host'] }}   {{ host }}
+{% endfor %}

@@ -1,0 +1,21 @@
+---
+- name: Inicializar el manager lider del swarm
+  hosts: master[0]
+  become: true
+  gather_facts: true
+  roles:
+    - swarm_manager
+
+- name: Unir managers adicionales al swarm
+  hosts: master[1:]
+  become: true
+  gather_facts: true
+  roles:
+    - swarm_manager
+
+- name: Unir workers al swarm
+  hosts: worker
+  become: true
+  gather_facts: true
+  roles:
+    - swarm_worker

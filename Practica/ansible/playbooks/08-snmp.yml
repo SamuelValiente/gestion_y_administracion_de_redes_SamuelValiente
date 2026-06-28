@@ -1,0 +1,7 @@
+---
+- name: Desplegar monitorización SNMP en todos los nodos
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - snmp

@@ -1,0 +1,7 @@
+---
+- name: Desplegar Zabbix Server en mon01
+  hosts: monitor
+  become: true
+  gather_facts: true
+  roles:
+    - zabbix_server

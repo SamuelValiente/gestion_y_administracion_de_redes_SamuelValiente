@@ -1,0 +1,88 @@
+---
+- name: Asegurar que el servicio de GlusterFS esté arrancado y activo
+  systemd:
+    name: glusterd
+    state: started
+    enabled: yes
+
+- name: Crear el directorio local para el ladrillo (brick)
+  file:
+    path: /gluster/brick1
+    state: directory
+    mode: '0755'
+
+- name: Crear el punto de montaje del cliente para Docker Swarm
+  file:
+    path: /mnt/gluster
+    state: directory
+    mode: '0777'
+
+- name: Añadir los nodos al clúster de GlusterFS (Peer Probe)
+  shell: "gluster peer probe {{ hostvars[item]['ansible_host'] }}"
+  loop: "{{ groups['cluster'] }}"
+  when: inventory_hostname == 'mst01' and item != 'mst01'
+  register: gluster_probe
+  changed_when: "'peer probe: success' in gluster_probe.stdout"
+
+- name: Esperar 10 segundos a que el clúster de GlusterFS se sincronice
+  pause:
+    seconds: 10
+  when: inventory_hostname == 'mst01'
+
+- name: Crear el volumen replicado de GlusterFS (Réplica 4)
+  shell: >
+    gluster volume create vol_compartido replica 4
+    10.0.0.10:/gluster/brick1
+    10.0.0.11:/gluster/brick1
+    10.0.0.12:/gluster/brick1
+    10.0.0.13:/gluster/brick1
+    force
+  when: inventory_hostname == 'mst01'
+  register: volume_create
+  failed_when: "volume_create.rc != 0 and 'already exists' not in volume_create.stderr"
+  changed_when: "'success' in volume_create.stdout"
+
+- name: Iniciar el volumen de GlusterFS
+  shell: "gluster volume start vol_compartido"
+  when: inventory_hostname == 'mst01'
+  register: volume_start
+  failed_when: "volume_start.rc != 0 and 'already started' not in volume_start.stderr"
+  changed_when: "'success' in volume_start.stdout"
+
+- name: Esperar a que los bricks estén online
+  shell: "gluster volume status vol_compartido | grep -c 'Y'"
+  register: bricks_online
+  until: bricks_online.stdout | int >= 8    # 4 bricks + 4 self-heal daemons
+  retries: 10
+  delay: 5
+  when: inventory_hostname == 'mst01'
+
+- name: Esperar 15 segundos adicionales para estabilización
+  pause:
+    seconds: 15
+    
+- name: Montar el volumen de GlusterFS en /mnt/gluster (Todos los nodos)
+  mount:
+    path: /mnt/gluster
+    src: "localhost:/vol_compartido"
+    fstype: glusterfs
+    opts: "defaults,_netdev"
+    state: mounted
+
+- name: Crear subcarpeta para MySQL con permisos correctos
+  file:
+    path: /mnt/gluster/mysql-data
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: '0775'
+  when: inventory_hostname == 'mst01'
+
+- name: Crear subcarpeta para WordPress con permisos correctos
+  file:
+    path: /mnt/gluster/wp-content
+    state: directory
+    owner: "33"
+    group: "33"
+    mode: '0775'
+  when: inventory_hostname == 'mst01'

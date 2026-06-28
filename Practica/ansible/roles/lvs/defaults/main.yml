@@ -1,0 +1,32 @@
+# VIP — Tiene que ser distinta a la IP del servidor real, o daría conflictos
+lvs_vip: 192.168.1.20
+lvs_port: 80
+lvs_protocol: TCP
+
+# Método de balanceo
+lvs_scheduler: rr
+
+# Modo LVS: NAT en este caso, ya que el tráfico se 
+# redirige a través del balanceador de carga
+lvs_mode: DR
+
+# Servidores web01 y web02
+lvs_real_servers:
+  - ip: 192.168.1.11   # web01
+    port: 80
+    weight: 1
+  - ip: 192.168.1.12   # web02
+    port: 80
+    weight: 1
+
+# Healthcheck
+lvs_check_protocol: TCP   # TCP o HTTP
+lvs_check_interval: 3
+lvs_check_timeout: 10
+
+# VRRP
+lvs_vrrp_instance: LVS_1
+lvs_vrrp_interface: enp0s3 #revisar esto, quizas es enp0s8?
+lvs_vrrp_virtual_router_id: 51
+lvs_vrrp_priority: 100
+lvs_vrrp_auth_pass: "S3cuPass"

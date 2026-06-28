@@ -1,0 +1,30 @@
+{% raw %}
+#!/bin/bash
+# SNMP extend script para métricas de Docker Swarm
+# Solo se ejecuta en nodos manager
+
+# Estado de los nodos del clúster
+NODE_STATUS=$(docker node ls --format '{{.Status}}' 2>/dev/null)
+NODES_READY=$(echo "$NODE_STATUS" | grep -c 'Ready')
+NODES_DOWN=$(echo "$NODE_STATUS" | grep -c 'Down')
+
+# Estado de los servicios
+SERVICE_STATUS=$(docker service ls --format '{{.Replicas}}' 2>/dev/null)
+SERVICES_OK=$(echo "$SERVICE_STATUS" | awk -F'/' '$1 == $2 {count++} END {print count+0}')
+SERVICES_KO=$(echo "$SERVICE_STATUS" | awk -F'/' '$1 != $2 {count++} END {print count+0}')
+
+# Réplicas de wordpress
+WP_REPLICAS=$(docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null \
+    | awk '/wordpress_wordpress/ {print $2}' \
+    | awk -F'/' '{print $1}')
+WP_REPLICAS_DESIRED=$(docker service ls --format '{{.Name}} {{.Replicas}}' 2>/dev/null \
+    | awk '/wordpress_wordpress/ {print $2}' \
+    | awk -F'/' '{print $2}')
+
+echo "nodes_ready=${NODES_READY:-0}"
+echo "nodes_down=${NODES_DOWN:-0}"
+echo "services_ok=${SERVICES_OK:-0}"
+echo "services_ko=${SERVICES_KO:-0}"
+echo "wp_replicas=${WP_REPLICAS:-0}"
+echo "wp_replicas_desired=${WP_REPLICAS_DESIRED:-0}"
+{% endraw %}

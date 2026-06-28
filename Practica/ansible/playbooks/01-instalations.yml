@@ -1,0 +1,62 @@
+---
+- name: Actualizar repositorios
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name : Actualizar apt cache
+      ansible.builtin.apt:
+        update_cache : yes
+
+- name: Instalar ping para todos los nodos
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Instalar iputils-ping
+      ansible.builtin.apt:
+        name: iputils-ping
+        state: present
+
+- name: Instalaciones para cluster
+  hosts: cluster
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Instalar servidor de GlusterFS
+      ansible.builtin.apt:
+        name: glusterfs-server
+        state: present
+        update_cache: true
+
+- name: Instalaciones para frontales web
+  hosts: web
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Instalar Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+      notify: restart nginx
+  handlers:
+    - name: restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+- name: Instalaciones para LVS
+  hosts: lvs
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Instalar paquetes LVS
+      ansible.builtin.apt:
+        name:
+          - keepalived
+          - ipvsadm
+        state: present
+        update_cache: true
+
+    

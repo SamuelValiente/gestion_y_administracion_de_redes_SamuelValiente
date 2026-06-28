@@ -1,0 +1,318 @@
+---
+- name: Instalar iptables-persistent
+  ansible.builtin.apt:
+    name:
+      - iptables
+      - iptables-persistent
+      - netfilter-persistent
+    state: present
+
+- name: Backup current iptables rules
+  ansible.builtin.shell:
+    cmd: "iptables-save > /tmp/iptables.backup.{{ inventory_hostname }}.rules"
+  become: true
+  changed_when: false
+  ignore_errors: true
+
+# Reglas críticas: loopback, conexiones establecidas y acceso SSH desde control/jumpstart
+- name: Permitir loopback
+  ansible.builtin.iptables:
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+
+- name: Permitir conexiones ya establecidas
+  ansible.builtin.iptables:
+    chain: INPUT
+    ctstate:
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+
+- name: Permitir SSH desde host jumpstart/control
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: >-
+      {{ (hostvars[groups['jumpstart'][0]].internal_ip)
+         if ('internal' in group_names and 'jumpstart' in groups and groups['jumpstart']|length > 0 and hostvars[groups['jumpstart'][0]].internal_ip is defined)
+         else (hostvars[groups['jumpstart'][0]].ansible_host
+               if ('jumpstart' in groups and groups['jumpstart']|length > 0 and hostvars[groups['jumpstart'][0]].ansible_host is defined)
+               else '192.168.56.1') }}
+    destination_port: "22"
+    jump: ACCEPT
+
+# Reglas comunes a todos los nodos
+- name: Permitir SSH desde red main 
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "192.168.1.0/24"
+    destination_port: "22"
+    jump: ACCEPT
+
+- name: Permitir SSH desde red internal
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "10.0.0.0/24"
+    destination_port: "22"
+    jump: ACCEPT
+
+- name: Permitir SNMP desde nodo monitor
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    source: "10.0.0.14"
+    destination_port: "161"
+    jump: ACCEPT
+
+# Reglas específicas por grupo
+
+# Balanceador de carga (lvs)
+
+# --- INPUT ---
+- name: "LVS: permitir HTTP desde cualquier origen"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "80"
+    jump: ACCEPT
+
+- name: "LVS: permitir HTTPS desde cualquier origen"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "443"
+    jump: ACCEPT
+
+# --- FORWARD ---
+- name: "LVS: forward tráfico establecido"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    ctstate:
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+
+- name: "LVS: forward nuevas conexiones HTTP hacia web"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    protocol: tcp
+    destination: "192.168.1.0/24"
+    destination_port: "80"
+    jump: ACCEPT
+
+- name: "LVS: forward nuevas conexiones HTTPS hacia web"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    protocol: tcp
+    destination: "192.168.1.0/24"
+    destination_port: "443"
+    jump: ACCEPT
+
+# --- NAT PREROUTING ---
+- name: "LVS: DNAT HTTP exterior hacia proxy01"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    in_interface: enp0s8
+    protocol: tcp
+    destination_port: "80"
+    jump: DNAT
+    to_destination: "192.168.1.11:80"
+
+- name: "LVS: DNAT HTTPS exterior hacia proxy01"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    in_interface: enp0s8
+    protocol: tcp
+    destination_port: "443"
+    jump: DNAT
+    to_destination: "192.168.1.11:443"
+
+# --- NAT POSTROUTING ---
+- name: "LVS: MASQUERADE hacia proxies en main"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: enp0s3
+    jump: MASQUERADE
+
+- name: "LVS: MASQUERADE hacia exterior"
+  when: "'lvs' in group_names"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: enp0s8
+    jump: MASQUERADE
+
+# Frontales web
+- name: "WEB: permitir HTTP solo desde red main"
+  when: "'web' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "192.168.1.0/24"
+    destination_port: "80"
+    jump: ACCEPT
+
+- name: "WEB: permitir HTTPS desde red main"
+  when: "'web' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "192.168.1.0/24"
+    destination_port: "443"
+    jump: ACCEPT
+
+# Nodos del clúster (masters y workers)
+- name: "CLUSTER: puertos TCP de Docker Swarm"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "10.0.0.0/24"
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "2377"
+    - "7946"
+
+- name: "CLUSTER: puertos UDP de Swarm"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    source: "10.0.0.0/24"
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "7946"
+    - "4789"
+
+- name: "CLUSTER: aceptar 8080 desde frontales web"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "192.168.1.0/24"
+    destination_port: "8080"
+    jump: ACCEPT
+
+- name: "CLUSTER: puertos TCP de GlusterFS"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "10.0.0.0/24"
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "24007"   # glusterd daemon
+    - "24008"   # glusterd RDMA (por si acaso)
+    - "49152"   # brick 1 (rango dinámico)
+    - "49153"   # brick 2
+    - "49154"   # brick 3
+    - "49155"   # brick 4
+
+- name: "CLUSTER: puerto UDP de GlusterFS"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    source: "10.0.0.0/24"
+    destination_port: "24007"
+    jump: ACCEPT
+
+- name: "CLUSTER: rango de puertos de bricks GlusterFS"
+  when: "'cluster' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "10.0.0.0/24"
+    destination_port: "49152:65535"
+    jump: ACCEPT
+# Monitor
+- name: "MONITOR: permitir consultas SNMP desde red interna"
+  when: "'monitor' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    source: "10.0.0.0/24"
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "161"
+    - "162"
+
+- name: "MONITOR: agente Zabbix en todos los nodos"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "10.0.0.14"
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "10050"
+
+- name: "MONITOR: puertos de Zabbix server y web"
+  when: "'monitor' in group_names"
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "{{ item.src }}"
+    destination_port: "{{ item.port }}"
+    jump: ACCEPT
+  loop:
+    - { src: "10.0.0.0/24", port: "10051" }
+    - { src: "192.168.1.0/24", port: "80" }
+
+- name: Permitir ICMP desde redes internas
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: icmp
+    source: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "192.168.1.0/24"
+    - "10.0.0.0/24"
+
+# POLÍTICAS: aplicar sólo después de crear todas las reglas necesarias
+- name: Política DROP en INPUT
+  ansible.builtin.iptables:
+    chain: INPUT
+    policy: DROP
+
+- name: Política DROP en FORWARD
+  ansible.builtin.iptables:
+    chain: FORWARD
+    policy: DROP
+
+- name: Política ACCEPT en OUTPUT
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    policy: ACCEPT
+
+# Guardar reglas para que persistan tras reinicio
+- name: Guardar reglas iptables
+  ansible.builtin.command:
+    cmd: netfilter-persistent save
+  become: true
+
+# Comprobación final mínima (informativa)
+- name: Mostrar rutas y reglas actuales (informativo)
+  ansible.builtin.shell: |
+    ip route show default || true
+    iptables -L INPUT -n --line-numbers || true
+  register: _iptables_state
+  changed_when: false

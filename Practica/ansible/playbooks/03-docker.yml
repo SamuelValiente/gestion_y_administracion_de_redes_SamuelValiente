@@ -1,0 +1,7 @@
+---
+- name: Instalar y configurar Docker en el cluster
+  hosts: cluster
+  become: true
+  gather_facts: true
+  roles:
+    - docker

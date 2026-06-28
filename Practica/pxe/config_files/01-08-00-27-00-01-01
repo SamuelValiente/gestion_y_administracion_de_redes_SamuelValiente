@@ -1,0 +1,14 @@
+# /tftp/pxelinux.cfg/08:00:27:00:01:0A file
+#
+# PXELinux default boot configuration for LVS server.
+# Automatic install on Main Network
+# For extra-configuration it points to /srv/nfs/ubuntu/configs/common so it gets all needed configs.
+
+DEFAULT install 
+PROMPT 1
+TIMEOUT 20  
+
+LABEL install
+	MENU LABEL Instalacion Automatica LVS (Red Main)
+	KERNEL ubuntu/casper/vmlinuz   
+	APPEND initrd=ubuntu/casper/initrd boot=casper netboot=nfs nfsroot=192.168.1.1:/srv/nfs/ubuntu ip=dhcp autoinstall ds=nocloud-net;s=http://192.168.1.1/configs/ ---

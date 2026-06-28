@@ -1,0 +1,50 @@
+
+# Habilitar ip forwarding
+
+- name: Habilitar ip forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+
+# Reglas de jumpstart
+
+- name: "NAT: internal hacia internet"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    source: "{{ jumpstart_internal_subnet }}"
+    out_interface: "{{ jumpstart_internet_iface }}"
+    jump: MASQUERADE
+
+- name: "NAT: main hacia internet"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    source: "{{ jumpstart_main_subnet }}"
+    out_interface: "{{ jumpstart_internet_iface }}"
+    jump: MASQUERADE
+
+- name: "FORWARD: internal hacia internet"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    source: "{{ jumpstart_internal_subnet }}"
+    out_interface: "{{ jumpstart_internet_iface }}"
+    jump: ACCEPT
+
+- name: "FORWARD: main hacia internet"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    source: "{{ jumpstart_main_subnet }}"
+    out_interface: "{{ jumpstart_internet_iface }}"
+    jump: ACCEPT
+
+- name: "FORWARD: tráfico de respuesta"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    ctstate:
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT

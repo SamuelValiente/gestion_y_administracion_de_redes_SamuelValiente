@@ -1,0 +1,6 @@
+nginx_swarm_host: 10.0.0.10  #cualquier nodo del swar, sirve
+nginx_swarm_port: 8080            
+nginx_server_name: "web_proxy"           
+nginx_client_max_body_size: 64m   #para uploads de WordPress
+nginx_proxy_read_timeout: 60s
+lvs_vip: 192.168.1.20

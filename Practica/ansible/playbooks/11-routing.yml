@@ -1,0 +1,44 @@
+---
+- name: Configurar interfaces del router
+  hosts: router
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Copiar fichero netplan del router
+      ansible.builtin.copy:
+        src: "files/netplan/{{ inventory_hostname }}.yaml"
+        dest: /etc/netplan/01-routing.yaml
+        owner: root
+        group: root
+        mode: "0644"
+      notify: aplicar netplan
+
+  handlers:
+    - name: aplicar netplan
+      ansible.builtin.command:
+        cmd: netplan apply
+
+- name: Configurar el router permanente entre main e internal
+  hosts: router
+  become: true
+  gather_facts: true
+  roles:
+    - linux-router
+
+- name: Publicar ruta hacia internal en los nodos main
+  hosts: main:!router
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Asegurar la ruta hacia la red internal a traves del router
+      ansible.builtin.command:
+        cmd: ip route replace 10.0.0.0/24 via 192.168.1.2
+
+- name: Publicar ruta hacia main en los nodos internal
+  hosts: internal:!router
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Asegurar la ruta hacia la red main a traves del router
+      ansible.builtin.command:
+        cmd: ip route replace 192.168.1.0/24 via 10.0.0.2

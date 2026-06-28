@@ -1,0 +1,32 @@
+# Zabbix Server configuration file
+
+# ---- Base de datos ----
+DBHost={{ zabbix_db_host }}
+DBPort={{ zabbix_db_port }}
+DBName={{ zabbix_db_name }}
+DBUser={{ zabbix_db_user }}
+DBPassword={{ zabbix_db_password }}
+
+# ---- Red ----
+ListenIP={{ zabbix_server_host }}
+ListenPort={{ zabbix_server_port }}
+
+# ---- SNMP ----
+SNMPTrapperFile=/var/log/snmptrap/snmptrap.log
+StartSNMPTrapper=1
+
+# ---- Rendimiento ----
+StartPollers=5
+StartTrappers=5
+StartPingers=1
+CacheSize=32M
+HistoryCacheSize=16M
+TrendCacheSize=4M
+
+# ---- Logs ----
+LogFile=/var/log/zabbix/zabbix_server.log
+LogFileSize=10
+DebugLevel=3
+
+# ---- Timeouts ----
+Timeout=30

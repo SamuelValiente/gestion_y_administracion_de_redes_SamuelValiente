@@ -1,0 +1,39 @@
+
+# Habilitar ip forwarding
+
+- name: Habilitar ip forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: true
+    state: present
+    reload: true
+
+# Reglas para enrutamiento entre las dos redes
+
+- name: "Forward: tráfico de respuesta"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    ctstate:
+      - ESTABLISHED
+      - RELATED
+    jump: ACCEPT
+
+- name: "Forward: main hacia internal"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    source: "192.168.1.0/24"
+    destination: "10.0.0.0/24"
+    jump: ACCEPT
+
+- name: "Forward: internal hacia main"
+  ansible.builtin.iptables:
+    chain: FORWARD
+    source: "10.0.0.0/24"
+    destination: "192.168.1.0/24"
+    jump: ACCEPT
+
+- name: Guardar reglas iptables
+  ansible.builtin.command:
+    cmd: netfilter-persistent save    
+

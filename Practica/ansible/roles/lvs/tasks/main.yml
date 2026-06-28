@@ -1,0 +1,44 @@
+---
+- name: Activar IP forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    reload: true
+
+- name: "DR: eliminar reglas MASQUERADE anteriores si existen"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: enp0s3
+    destination: "{{ item }}"
+    jump: MASQUERADE
+    state: absent
+  loop:
+    - "192.168.1.11/32"
+    - "192.168.1.12/32"
+  ignore_errors: true
+
+- name: Desplegar configuración de keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart keepalived
+
+- name: Validar configuración de keepalived
+  ansible.builtin.command: keepalived --config-test
+  changed_when: false
+  register: keepalived_test
+
+- name: Mostrar resultado de validación
+  ansible.builtin.debug:
+    msg: "{{ keepalived_test.stderr }}"
+
+- name: Asegurar que keepalived está habilitado y arrancado
+  ansible.builtin.service:
+    name: keepalived
+    state: started
+    enabled: true

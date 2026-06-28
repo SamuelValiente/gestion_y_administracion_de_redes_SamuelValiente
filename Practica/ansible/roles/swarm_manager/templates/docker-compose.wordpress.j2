@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ mysql_root_pass }}"
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp
+      MYSQL_PASSWORD: "{{ mysql_wp_pass }}"
+    volumes:
+      - type: bind
+        source: /mnt/gluster/mysql-data
+        target: /var/lib/mysql
+    networks:
+      - wp-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  wordpress:
+    image: wordpress:latest
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: "{{ mysql_wp_pass }}"
+    volumes:
+      - type: bind
+        source: /mnt/gluster/wp-content
+        target: /var/www/html/wp-content
+    ports:
+      - "8080:80"
+    networks:
+      - wp-network
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+      restart_policy:
+        condition: on-failure
+
+networks:
+  wp-network:
+    driver: overlay

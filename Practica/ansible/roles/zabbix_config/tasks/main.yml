@@ -1,0 +1,488 @@
+---
+# ---- Prerequisito: instalar colección community.zabbix ----
+- name: Instalar colección community.zabbix
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install community.zabbix
+  run_once: true
+  changed_when: false
+
+# ---- Grupos de hosts ----
+- name: Crear grupo Main Network
+  community.zabbix.zabbix_group:
+    host_groups:
+      - "{{ zabbix_hostgroup_main }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  run_once: true
+
+- name: Crear grupo Internal Network
+  community.zabbix.zabbix_group:
+    host_groups:
+      - "{{ zabbix_hostgroup_internal }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  run_once: true
+
+# ---- Dar de alta hosts en Zabbix ----
+- name: Registrar nodos internal en Zabbix
+  community.zabbix.zabbix_host:
+    host_name: "{{ item }}"
+    host_groups:
+      - "{{ zabbix_hostgroup_internal }}"
+    link_templates:
+      - "{{ zabbix_linux_template }}"
+    interfaces:
+      - type: snmp
+        main: 1
+        useip: 1
+        ip: "{{ hostvars[item]['ansible_host'] }}"
+        dns: ""
+        port: "161"
+        details:
+          version: "{{ zabbix_snmp_version }}"
+          community: "{{ zabbix_snmp_community }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop: "{{ groups['internal'] }}"
+  run_once: true
+
+- name: Registrar nodos main en Zabbix
+  community.zabbix.zabbix_host:
+    host_name: "{{ item }}"
+    host_groups:
+      - "{{ zabbix_hostgroup_main }}"
+    link_templates:
+      - "{{ zabbix_linux_template }}"
+    interfaces:
+      - type: snmp
+        main: 1
+        useip: 1
+        ip: "{{ hostvars[item]['ansible_host'] }}"
+        dns: ""
+        port: "161"
+        details:
+          version: "{{ zabbix_snmp_version }}"
+          community: "{{ zabbix_snmp_community }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop: "{{ groups['main'] | difference(['jumpstart', 'hotdesk']) }}"
+  run_once: true
+
+# ---- Obtener token y mapa interfaceid ----
+- name: Autenticarse en la API de Zabbix
+  ansible.builtin.uri:
+    url: "http://{{ zabbix_api_host }}/zabbix/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "user.login"
+      params:
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_httpapi_pass }}"
+      id: 1
+    return_content: yes
+  register: zabbix_login
+  run_once: true
+
+- name: Registrar token de autenticación
+  ansible.builtin.set_fact:
+    zabbix_auth_token: "{{ zabbix_login.json.result }}"
+  run_once: true
+
+- name: Obtener todos los hosts con su hostid
+  ansible.builtin.uri:
+    url: "http://{{ zabbix_api_host }}/zabbix/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "host.get"
+      params:
+        output:
+          - hostid
+          - host
+      auth: "{{ zabbix_auth_token }}"
+      id: 2
+    return_content: yes
+  register: zabbix_hosts_raw
+  run_once: true
+
+- name: Construir mapa hostname -> hostid
+  ansible.builtin.set_fact:
+    zabbix_hostid_map: >-
+      {{
+        zabbix_hostid_map | default({}) |
+        combine({ item.host: item.hostid })
+      }}
+  loop: "{{ zabbix_hosts_raw.json.result }}"
+  run_once: true
+
+- name: Obtener interfaces SNMP de todos los hosts
+  ansible.builtin.uri:
+    url: "http://{{ zabbix_api_host }}/zabbix/api_jsonrpc.php"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "hostinterface.get"
+      params:
+        output: extend
+        filter:
+          type: 2
+      auth: "{{ zabbix_auth_token }}"
+      id: 3
+    return_content: yes
+  register: zabbix_interfaces_raw
+  run_once: true
+
+- name: Construir mapa hostid -> interfaceid
+  ansible.builtin.set_fact:
+    zabbix_interfaceid_map: >-
+      {{
+        zabbix_interfaceid_map | default({}) |
+        combine({ item.hostid: item.interfaceid })
+      }}
+  loop: "{{ zabbix_interfaces_raw.json.result }}"
+  run_once: true
+
+# ---- Items personalizados para extends ----
+- name: Crear items SNMP nginx
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: snmp_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      snmp_oid: "{{ item.oid }}"
+      interfaceid: "{{ zabbix_interfaceid_map[zabbix_hostid_map[item.host]] }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: web01
+      name: "Nginx active connections"
+      key: "nginx.active"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"nginx-status\".1"
+    - host: web02
+      name: "Nginx active connections"
+      key: "nginx.active"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"nginx-status\".1"
+  run_once: true
+
+- name: Crear items SNMP para extend mysql
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: snmp_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      snmp_oid: "{{ item.oid }}"
+      interfaceid: "{{ zabbix_interfaceid_map[zabbix_hostid_map[item.host]] }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: wrk01
+      name: "MySQL threads connected"
+      key: "mysql.connections"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".1"
+    - host: wrk01
+      name: "MySQL queries"
+      key: "mysql.queries"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".2"
+    - host: wrk01
+      name: "MySQL slow queries"
+      key: "mysql.slow_queries"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".3"
+    - host: wrk02
+      name: "MySQL threads connected"
+      key: "mysql.connections"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".1"
+    - host: wrk02
+      name: "MySQL queries"
+      key: "mysql.queries"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".2"
+    - host: wrk02
+      name: "MySQL slow queries"
+      key: "mysql.slow_queries"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"mysql-status\".3"
+  run_once: true
+
+- name: Crear items SNMP para extend LVS
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: snmp_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      snmp_oid: "{{ item.oid }}"
+      interfaceid: "{{ zabbix_interfaceid_map[zabbix_hostid_map[item.host]] }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: lvs01
+      name: "LVS active connections"
+      key: "lvs.active_connections"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"lvs-status\".1"
+    - host: lvs01
+      name: "LVS inactive connections"
+      key: "lvs.inactive_connections"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"lvs-status\".2"
+    - host: lvs01
+      name: "LVS real servers"
+      key: "lvs.real_servers"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"lvs-status\".7"
+    - host: lvs01
+      name: "LVS bytes in"
+      key: "lvs.bytes_in"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"lvs-status\".5"
+    - host: lvs01
+      name: "LVS bytes out"
+      key: "lvs.bytes_out"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"lvs-status\".6"
+  run_once: true
+
+- name: Crear items SNMP para extend GlusterFS
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: snmp_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      snmp_oid: "{{ item.oid }}"
+      interfaceid: "{{ zabbix_interfaceid_map[zabbix_hostid_map[item.host]] }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: mst01
+      name: "GlusterFS peers connected"
+      key: "gluster.peers_connected"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".1"
+    - host: mst01
+      name: "GlusterFS volume started"
+      key: "gluster.volume_started"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".2"
+    - host: mst01
+      name: "GlusterFS bricks online"
+      key: "gluster.bricks_online"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".3"
+    - host: mst01
+      name: "GlusterFS bricks offline"
+      key: "gluster.bricks_offline"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".4"
+    - host: mst02
+      name: "GlusterFS peers connected"
+      key: "gluster.peers_connected"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".1"
+    - host: mst02
+      name: "GlusterFS volume started"
+      key: "gluster.volume_started"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".2"
+    - host: mst02
+      name: "GlusterFS bricks online"
+      key: "gluster.bricks_online"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".3"
+    - host: mst02
+      name: "GlusterFS bricks offline"
+      key: "gluster.bricks_offline"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"gluster-status\".4"
+  run_once: true
+
+- name: Crear items SNMP para extend Docker Swarm
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: snmp_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      snmp_oid: "{{ item.oid }}"
+      interfaceid: "{{ zabbix_interfaceid_map[zabbix_hostid_map[item.host]] }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: mst01
+      name: "Swarm nodes ready"
+      key: "swarm.nodes_ready"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".1"
+    - host: mst01
+      name: "Swarm nodes down"
+      key: "swarm.nodes_down"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".2"
+    - host: mst01
+      name: "Swarm services ok"
+      key: "swarm.services_ok"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".3"
+    - host: mst01
+      name: "Swarm services ko"
+      key: "swarm.services_ko"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".4"
+    - host: mst01
+      name: "WordPress replicas activas"
+      key: "swarm.wp_replicas"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".5"
+    - host: mst01
+      name: "WordPress replicas deseadas"
+      key: "swarm.wp_replicas_desired"
+      oid: "NET-SNMP-EXTEND-MIB::nsExtendOutput2Line.\"swarm-status\".6"
+  run_once: true
+
+# ---- Triggers ----
+- name: Triggers de sistema para todos los nodos
+  community.zabbix.zabbix_trigger:
+    host_name: "{{ item.host }}"
+    name: "{{ item.description }}"
+    params:
+      expression: "{{ item.expression }}"
+      priority: "{{ item.priority }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop: "{{ zabbix_system_triggers }}"
+  run_once: true
+
+- name: Triggers de servicios
+  community.zabbix.zabbix_trigger:
+    host_name: "{{ item.host }}"
+    name: "{{ item.description }}"
+    params:
+      expression: "{{ item.expression }}"
+      priority: "{{ item.priority }}"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop: "{{ zabbix_service_triggers }}"
+  run_once: true
+
+- name: Triggers de nodo no disponible
+  community.zabbix.zabbix_trigger:
+    host_name: "{{ item }}"
+    name: "Nodo {{ item }} no responde"
+    params:
+      expression: "nodata(/{{ item }}/system.cpu.util[snmp,0],5m)=1"
+      priority: disaster
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - mst01
+    - mst02
+    - wrk01
+    - wrk02
+    - web01
+    - web02
+    - lvs01
+    - mon01
+  run_once: true
+
+# ---- HTTP checks ----
+- name: Crear HTTP checks WordPress via frontales
+  community.zabbix.zabbix_item:
+    host_name: "{{ item.host }}"
+    name: "{{ item.name }}"
+    params:
+      type: http_agent
+      key: "{{ item.key }}"
+      value_type: numeric_unsigned
+      interval: 60s
+      url: "{{ item.url }}"
+      status_codes: "200"
+    state: present
+  vars:
+    ansible_host: "{{ zabbix_api_host }}"
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_httpapi_port: "{{ zabbix_httpapi_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_httpapi_use_ssl }}"
+    ansible_httpapi_validate_certs: "{{ zabbix_httpapi_validate_certs }}"
+  loop:
+    - host: web01
+      name: "WordPress HTTP check via web01"
+      key: "wordpress.http.check"
+      url: "http://{{ hostvars['web01']['ansible_host'] }}"
+    - host: web02
+      name: "WordPress HTTP check via web02"
+      key: "wordpress.http.check"
+      url: "http://{{ hostvars['web02']['ansible_host'] }}"
+    - host: lvs01
+      name: "WordPress HTTP check via LVS"
+      key: "wordpress.http.lvs"
+      url: "http://{{ hostvars['lvs01']['ansible_host'] }}"
+  run_once: true

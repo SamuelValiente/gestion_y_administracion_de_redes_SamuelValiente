@@ -1,0 +1,12 @@
+---
+- name: Configurar balanceador LVS
+  hosts: lvs
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Restaurar gateway de salida propio del LVS
+      ansible.builtin.command:
+        cmd: ip route replace default via {{ lvs_external_gateway }}
+      when: lvs_external_gateway is defined and lvs_external_gateway | length > 0
+  roles:
+    - lvs

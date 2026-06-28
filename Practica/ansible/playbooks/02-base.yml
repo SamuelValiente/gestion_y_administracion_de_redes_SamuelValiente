@@ -1,0 +1,14 @@
+---
+- name: Preparacion base de los nodos de main
+  hosts: main
+  become: true
+  gather_facts: true
+  roles:
+    - base
+
+- name: Preparacion base de los nodos internal
+  hosts: internal
+  become: true
+  gather_facts: true
+  roles:
+    - base

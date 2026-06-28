@@ -1,0 +1,38 @@
+---
+- name: Asegurar servicios de Zabbix tras reinicio
+  hosts: monitor
+  gather_facts: no
+  tasks:
+    - name: Asegurar MySQL arrancado y habilitado al inicio
+      ansible.builtin.service:
+        name: mysql
+        state: started
+        enabled: true
+
+    - name: Asegurar zabbix-server arrancado y habilitado
+      ansible.builtin.service:
+        name: zabbix-server
+        state: started
+        enabled: true
+
+    - name: Asegurar apache2 arrancado y habilitado
+      ansible.builtin.service:
+        name: apache2
+        state: started
+        enabled: true
+
+- name: Restaurar reglas iptables en todos los nodos
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Asegurar que netfilter-persistent está habilitado
+      ansible.builtin.service:
+        name: netfilter-persistent
+        enabled: true
+      ignore_errors: true
+
+    - name: Restaurar reglas iptables desde archivo persistente
+      ansible.builtin.command:
+        cmd: netfilter-persistent restart
+      changed_when: false
+      ignore_errors: true

@@ -1,0 +1,26 @@
+#!/bin/bash
+# SNMP extend script para métricas de nginx
+# Requiere stub_status activo en nginx
+
+STATS=$(curl -s http://127.0.0.1/nginx_status 2>/dev/null)
+
+if [ -z "$STATS" ]; then
+    echo "ERROR: no se puede conectar a nginx_status"
+    exit 1
+fi
+
+ACTIVE=$(echo "$STATS"    | awk '/Active connections/ {print $3}')
+ACCEPTS=$(echo "$STATS"   | awk 'NR==3 {print $1}')
+HANDLED=$(echo "$STATS"   | awk 'NR==3 {print $2}')
+REQUESTS=$(echo "$STATS"  | awk 'NR==3 {print $3}')
+READING=$(echo "$STATS"   | awk '/Reading/ {print $2}')
+WRITING=$(echo "$STATS"   | awk '/Writing/ {print $4}')
+WAITING=$(echo "$STATS"   | awk '/Waiting/ {print $6}')
+
+echo "active=$ACTIVE"
+echo "accepts=$ACCEPTS"
+echo "handled=$HANDLED"
+echo "requests=$REQUESTS"
+echo "reading=$READING"
+echo "writing=$WRITING"
+echo "waiting=$WAITING"

@@ -1,0 +1,155 @@
+---
+# Credenciales API Zabbix
+zabbix_api_url: "http://10.0.0.14/zabbix"
+zabbix_api_user: "Admin"
+zabbix_api_password: "zabbix"
+
+# Comunidad SNMP (debe coincidir con rol snmp)
+zabbix_snmp_community: "public"
+zabbix_snmp_version: 2
+
+# Grupos de hosts
+zabbix_hostgroup_main: "Main Network"
+zabbix_hostgroup_internal: "Internal Network"
+
+# Template estándar Linux por SNMP
+zabbix_linux_template: "Linux by SNMP"
+
+# Conexión httpapi (nombres propios para evitar recursión en vars:)
+zabbix_httpapi_port: 80
+zabbix_httpapi_use_ssl: false
+zabbix_httpapi_validate_certs: false
+
+# Lista de triggers
+zabbix_system_triggers:
+  # CPU
+  - host: mst01
+    description: "CPU alta en mst01"
+    expression: "avg(/mst01/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: mst02
+    description: "CPU alta en mst02"
+    expression: "avg(/mst02/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: wrk01
+    description: "CPU alta en wrk01"
+    expression: "avg(/wrk01/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: wrk02
+    description: "CPU alta en wrk02"
+    expression: "avg(/wrk02/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: web01
+    description: "CPU alta en web01"
+    expression: "avg(/web01/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: web02
+    description: "CPU alta en web02"
+    expression: "avg(/web02/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  - host: lvs01
+    description: "CPU alta en lvs01"
+    expression: "avg(/lvs01/system.cpu.util[snmp,0],5m)>90"
+    priority: high
+  # Memoria
+  - host: mst01
+    description: "Memoria baja en mst01"
+    expression: "last(/mst01/vm.memory.available[snmp])<104857600"
+    priority: average
+  - host: mst02
+    description: "Memoria baja en mst02"
+    expression: "last(/mst02/vm.memory.available[snmp])<104857600"
+    priority: average
+  - host: wrk01
+    description: "Memoria baja en wrk01"
+    expression: "last(/wrk01/vm.memory.available[snmp])<104857600"
+    priority: average
+  - host: wrk02
+    description: "Memoria baja en wrk02"
+    expression: "last(/wrk02/vm.memory.available[snmp])<104857600"
+    priority: average
+  # Disco (vfs.fs.pused[1] es % usado, alerta cuando supera 90%)
+  - host: mst01
+    description: "Disco casi lleno en mst01"
+    expression: "last(/mst01/vfs.fs.pused[1])>90"
+    priority: high
+  - host: mst02
+    description: "Disco casi lleno en mst02"
+    expression: "last(/mst02/vfs.fs.pused[1])>90"
+    priority: high
+  - host: wrk01
+    description: "Disco casi lleno en wrk01"
+    expression: "last(/wrk01/vfs.fs.pused[1])>90"
+    priority: high
+  - host: wrk02
+    description: "Disco casi lleno en wrk02"
+    expression: "last(/wrk02/vfs.fs.pused[1])>90"
+    priority: high
+
+zabbix_service_triggers:
+  # Nginx
+  - host: web01
+    description: "Nginx sin conexiones activas en web01"
+    expression: "last(/web01/nginx.active)=0"
+    priority: high
+  - host: web02
+    description: "Nginx sin conexiones activas en web02"
+    expression: "last(/web02/nginx.active)=0"
+    priority: high
+  # MySQL
+  - host: wrk01
+    description: "MySQL sin conexiones en wrk01"
+    expression: "last(/wrk01/mysql.connections)=0"
+    priority: high
+  - host: wrk02
+    description: "MySQL sin conexiones en wrk02"
+    expression: "last(/wrk02/mysql.connections)=0"
+    priority: high
+  - host: wrk01
+    description: "Slow queries elevadas en wrk01"
+    expression: "last(/wrk01/mysql.slow_queries)>100"
+    priority: average
+  - host: wrk02
+    description: "Slow queries elevadas en wrk02"
+    expression: "last(/wrk02/mysql.slow_queries)>100"
+    priority: average
+  # LVS
+  - host: lvs01
+    description: "LVS sin real servers activos"
+    expression: "last(/lvs01/lvs.real_servers)=0"
+    priority: disaster
+  # GlusterFS
+  - host: mst01
+    description: "GlusterFS volumen parado"
+    expression: "last(/mst01/gluster.volume_started)=0"
+    priority: disaster
+  - host: mst01
+    description: "GlusterFS bricks offline"
+    expression: "last(/mst01/gluster.bricks_offline)>0"
+    priority: high
+  # Docker Swarm
+  - host: mst01
+    description: "Nodos Docker Swarm caídos"
+    expression: "last(/mst01/swarm.nodes_down)>0"
+    priority: high
+  - host: mst01
+    description: "Servicios Swarm con réplicas insuficientes"
+    expression: "last(/mst01/swarm.services_ko)>0"
+    priority: high
+  - host: mst01
+    description: "Réplicas WordPress insuficientes"
+    expression: "last(/mst01/swarm.wp_replicas)<last(/mst01/swarm.wp_replicas_desired)"
+    priority: disaster
+  # HTTP checks
+  - host: web01
+    description: "WordPress no responde via web01"
+    expression: "last(/web01/wordpress.http.check)<>200"
+    priority: disaster
+  - host: web02
+    description: "WordPress no responde via web02"
+    expression: "last(/web02/wordpress.http.check)<>200"
+    priority: disaster
+  - host: lvs01
+    description: "WordPress no responde via LVS"
+    expression: "last(/lvs01/wordpress.http.lvs)<>200"
+    priority: disaster

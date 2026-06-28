@@ -1,0 +1,49 @@
+# /etc/keepalived/keepalived.conf
+
+global_defs {
+    router_id LVS_SERVER
+}
+
+vrrp_instance {{ lvs_vrrp_instance }} {
+    state MASTER
+    interface {{ lvs_vrrp_interface }}
+    virtual_router_id {{ lvs_vrrp_virtual_router_id }}
+    priority {{ lvs_vrrp_priority }}
+    advert_int 1
+
+    authentication {
+        auth_type PASS
+        auth_pass {{ lvs_vrrp_auth_pass }}
+    }
+
+    virtual_ipaddress {
+        {{ lvs_vip }}
+    }
+}
+
+virtual_server {{ lvs_vip }} {{ lvs_port }} {
+    delay_loop {{ lvs_check_interval }}
+    lb_algo    {{ lvs_scheduler }}
+    lb_kind    {{ lvs_mode }}
+    protocol   {{ lvs_protocol }}
+
+{% for server in lvs_real_servers %}
+    real_server {{ server.ip }} {{ server.port }} {
+        weight {{ server.weight }}
+{% if lvs_check_protocol == "HTTP" %}
+        HTTP_GET {
+            url {
+                path /
+                status_code 200
+            }:
+            connect_timeout {{ lvs_check_timeout }}
+        }
+{% else %}
+        TCP_CHECK {
+            connect_timeout {{ lvs_check_timeout }}
+        }
+{% endif %}
+    }
+
+{% endfor %}
+}

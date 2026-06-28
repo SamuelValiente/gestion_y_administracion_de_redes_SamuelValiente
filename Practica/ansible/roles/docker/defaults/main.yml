@@ -1,0 +1,9 @@
+docker_version: "26.0"          # versión mínima a instalar
+docker_users:                   # usuarios que se añaden al grupo docker
+  - ansible
+docker_daemon_config:
+  log-driver: "json-file"
+  log-opts:
+    max-size: "100m"
+    max-file: "3"
+  storage-driver: "overlay2"

@@ -1,0 +1,21 @@
+base_timezone: "Europe/Madrid"
+
+base_packages:
+  - curl
+  - vim
+  - net-tools
+  - htop
+  - git
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - chrony        
+  - python3
+  - python3-pip
+
+base_service_user: ansible
+base_service_user_shell: /bin/bash
+base_service_user_groups:
+  - sudo
+
+base_ssh_pubkey: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"

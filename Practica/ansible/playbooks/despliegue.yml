@@ -1,0 +1,16 @@
+---
+- import_playbook: 00-bootstrap-jumpstart.yml
+- import_playbook: 01-instalations.yml
+- import_playbook: 02-base.yml
+- import_playbook: 03-docker.yml
+- import_playbook: 04-glusterfs.yml
+- import_playbook: 05-swarm.yml
+- import_playbook: 06-web.yml
+- import_playbook: 07-lvs.yml
+- import_playbook: 08-snmp.yml
+- import_playbook: 09-zabbix-server.yml
+- import_playbook: 10-zabbix-config.yml
+- import_playbook: 11-routing.yml
+- import_playbook: 12-iptables.yml
+- import_playbook: 13-routing-final.yml
+

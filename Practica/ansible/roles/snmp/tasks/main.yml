@@ -1,0 +1,142 @@
+---
+# ---- Instalación ----
+- name: Instalar snmpd y utilidades
+  ansible.builtin.apt:
+    name:
+      - snmpd
+      - snmp
+      - libsnmp-dev
+    state: present
+    update_cache: yes
+
+# ---- Configuración ----
+- name: Desplegar configuración snmpd
+  ansible.builtin.template:
+    src: snmpd.conf.j2
+    dest: /etc/snmp/snmpd.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart snmpd
+
+# ---- Servicio ----
+- name: Asegurar que snmpd está habilitado y arrancado
+  ansible.builtin.service:
+    name: snmpd
+    state: started
+    enabled: true
+
+# ---- Extends: nginx ----
+- name: Instalar curl (necesario para extend nginx)
+  ansible.builtin.apt:
+    name: curl
+    state: present
+  when: "'web' in group_names"
+
+- name: Desplegar script extend nginx
+  ansible.builtin.template:
+    src: extend_nginx.sh.j2
+    dest: /usr/local/bin/snmp_extend_nginx.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: "'web' in group_names"
+  notify: restart snmpd
+
+# ---- Extends: mysql ----
+- name: Esperar a que el contenedor MySQL esté listo
+  ansible.builtin.shell: |
+    docker ps -q -f name=wordpress_mysql
+  register: mysql_container
+  until: mysql_container.stdout != ""
+  retries: 10
+  delay: 10
+  when: "'worker' in group_names"
+  run_once: true
+
+- name: Crear usuario MySQL para monitorización SNMP
+  ansible.builtin.shell: |
+    docker exec $(docker ps -q -f name=wordpress_mysql) \
+    mysql -uroot -p{{ mysql_root_pass }} -e \
+    "CREATE USER IF NOT EXISTS '{{ snmp_mysql_user }}'@'%' \
+     IDENTIFIED BY '{{ snmp_mysql_password }}'; \
+     GRANT PROCESS, REPLICATION CLIENT ON *.* \
+     TO '{{ snmp_mysql_user }}'@'%'; \
+     FLUSH PRIVILEGES;"
+  when: "'worker' in group_names"
+  run_once: true
+
+- name: Desplegar script extend mysql
+  ansible.builtin.template:
+    src: extend_mysql.sh.j2
+    dest: /usr/local/bin/snmp_extend_mysql.sh
+    owner: root
+    group: root
+    mode: '0700'
+  when: "'worker' in group_names"
+  notify: restart snmpd
+
+# ---- Extends: LVS ----
+- name: Instalar ipvsadm (necesario para extend LVS)
+  ansible.builtin.apt:
+    name: ipvsadm
+    state: present
+  when: "'lvs' in group_names"
+
+- name: Permitir a snmpd ejecutar ipvsadm sin sudo
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/snmp-ipvsadm
+    line: "snmp ALL=(root) NOPASSWD: /sbin/ipvsadm"
+    create: yes
+    mode: '0440'
+    validate: 'visudo -cf %s'
+  when: "'lvs' in group_names"
+
+- name: Desplegar script extend LVS
+  ansible.builtin.template:
+    src: extend_lvs.sh.j2
+    dest: /usr/local/bin/snmp_extend_lvs.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: "'lvs' in group_names"
+  notify: restart snmpd
+
+# ---- Extends: GlusterFS ----
+- name: Desplegar script extend GlusterFS
+  ansible.builtin.template:
+    src: extend_gluster.sh.j2
+    dest: /usr/local/bin/snmp_extend_gluster.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: "'cluster' in group_names"
+  notify: restart snmpd
+
+- name: Permitir a snmpd ejecutar gluster sin sudo
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/snmp-gluster
+    line: "snmp ALL=(root) NOPASSWD: /usr/sbin/gluster"
+    create: yes
+    mode: '0440'
+    validate: 'visudo -cf %s'
+  when: "'cluster' in group_names"
+
+# ---- Extends: Docker Swarm ----
+- name: Añadir usuario snmp al grupo docker
+  ansible.builtin.user:
+    name: snmp
+    groups: docker
+    append: yes
+  when: "'master' in group_names"
+  notify: restart snmpd
+
+- name: Desplegar script extend Docker Swarm
+  ansible.builtin.template:
+    src: extend_swarm.sh.j2
+    dest: /usr/local/bin/snmp_extend_swarm.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: "'master' in group_names"
+  notify: restart snmpd

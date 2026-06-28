@@ -1,0 +1,7 @@
+---
+- name: Aplicar firewall base en todos los nodos de servicio
+  hosts: main:internal:!jumpstart:!router
+  become: true
+  gather_facts: true
+  roles:
+    - iptables

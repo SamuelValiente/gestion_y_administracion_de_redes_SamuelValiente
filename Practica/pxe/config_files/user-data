@@ -1,0 +1,31 @@
+#cloud-config
+autoinstall:
+  version: 1
+  reboot: inclusive
+  refresh-installer:
+    update: false
+  interactive-sections: []
+  locale: es_ES.UTF-8
+  keyboard:
+    layout: es
+  identity:
+    hostname: wp-node
+    username: ansible
+    # ansible
+    password: "$6$oUoXDok513Bt8GTG$g6cjdRQ5ZonMftWJqsIpiFqdfZ3fqRdEBJ/DhYcOP1rSh7HFWQnKPX91Mh5FwpD8GbAbgVN7EYO7bNbgvcpNh1"
+  ssh:
+    install-server: true
+    authorized-keys:
+    # jumpstart key
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC75UCTO0lWXU5tYrzr5sOxFBNtewWBab/HrY0VY0dQkPGONLDfJTChC2xFPolGVR0jWt7mM5pHlBvnuF+DHEq0UpzYnNhznp+CRdU3j8IM0mAxoRx9FC53w5gJ19W5mgA21nRa2zm7dJyYTaKfgYFlHbapbSEhWw40gCVRIBHyHcdZ33sMuKmPqorA6OvQfTn+WSLsdxvClhkFEVDb/0kDGjoSO4gylx7b3RUUsElNFGNroTO8wsj9EDZHWZCbd2O6RAeW5D+b9/7OMKCFFIpnK4NBmsdB1zTE2PFDrJHpW1zO9DYDy6igHnj54DOmc8VTcwEZ9uHU2o3dXMkKDcL5uxmbWmuz1yHZwd+g1X6H1BZa8KhUT2a+n9wf8UHkqxmbmP1WeCnDb/+b3xOdqMUCU1aARS0LprqBy0SblAe3RegdZKZ5DZKEXu0TsiTS4iZ7+NqN6dpR/MvmkLyrpam3Y0LEo88w/a5KDYS83TNE2WAr/CcLGKeK3OTfWnBfNcdiONfe61fAzNQz8m79IEzEx1hs6HuJV/kcSs+hdCtueCVbsqi4C7bqtMiRvnCGVD6cDIdL/Kt+yvKm73LLOutyvenpNGW55BHveXVJVDP7DglAn8c1FtBWeXb7GD6mqk0o7TqndkNRgqrkI+wtAr3Ga/Hd7ez66j0rHiOrxXX38Q== root@jumpstart
+  storage:
+    layout:
+      name: direct
+  network:
+    version: 2
+    ethernets:
+      enp0s3:
+        dhcp4: true
+  late-commands:
+    - curtin in-target -- apt-get update
+    - curtin in-target -- sh -c "echo 'ansible ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ansible"

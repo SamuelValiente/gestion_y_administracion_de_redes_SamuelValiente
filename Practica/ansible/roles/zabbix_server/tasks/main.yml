@@ -1,0 +1,113 @@
+---
+# ---- Repositorio Zabbix ----
+- name: Descargar repositorio Zabbix
+  ansible.builtin.get_url:
+    url: "https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu24.04_all.deb"
+    dest: /tmp/zabbix-release.deb
+    mode: '0644'
+
+- name: Instalar repositorio Zabbix
+  ansible.builtin.apt:
+    deb: /tmp/zabbix-release.deb
+    state: present
+
+- name: Actualizar caché apt tras añadir repositorio
+  ansible.builtin.apt:
+    update_cache: yes
+
+# ---- Base de datos local ----
+- name: Instalar MySQL server en mon01
+  ansible.builtin.apt:
+    name:
+      - mysql-server
+      - python3-mysqldb
+    state: present
+    update_cache: yes
+
+- name: Asegurar que MySQL está arrancado
+  ansible.builtin.service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Crear base de datos zabbix
+  community.mysql.mysql_db:
+    name: "{{ zabbix_db_name }}"
+    encoding: utf8mb4
+    collation: utf8mb4_bin
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+- name: Crear usuario zabbix en MySQL local
+  community.mysql.mysql_user:
+    name: "{{ zabbix_db_user }}"
+    password: "{{ zabbix_db_password }}"
+    priv: "{{ zabbix_db_name }}.*:ALL"
+    host: localhost
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+# ---- Instalación ----
+- name: Instalar Zabbix Server, frontend y utilidades
+  ansible.builtin.apt:
+    name:
+      - zabbix-server-mysql
+      - zabbix-frontend-php
+      - zabbix-apache-conf
+      - zabbix-sql-scripts
+      - zabbix-agent2
+    state: present
+
+# ---- Base de datos ----
+- name: Permitir funciones en MySQL para Zabbix
+  community.mysql.mysql_variables:
+    variable: log_bin_trust_function_creators
+    value: 1
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    
+- name: Comprobar si Zabbix ya tiene esquema instalado
+  community.mysql.mysql_query:
+    login_db: "{{ zabbix_db_name }}"
+    query: "SELECT 1 FROM information_schema.tables WHERE table_name='users' LIMIT 1;"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  register: zabbix_schema_check
+  changed_when: false
+
+- name: Importar esquema inicial de Zabbix en MySQL (solo si está vacío)
+  ansible.builtin.shell: |
+    zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | \
+    mysql -h {{ zabbix_db_host }} -P {{ zabbix_db_port }} \
+          -u {{ zabbix_db_user }} -p{{ zabbix_db_password }} {{ zabbix_db_name }}
+  when: zabbix_schema_check.query_result[0] | length == 0
+  notify: restart zabbix-server
+
+# ---- Configuración ----
+- name: Desplegar configuración Zabbix Server
+  ansible.builtin.template:
+    src: zabbix_server.conf.j2
+    dest: /etc/zabbix/zabbix_server.conf
+    owner: zabbix
+    group: zabbix
+    mode: '0640'
+  notify: restart zabbix-server
+
+# ---- Timezone frontend ----
+- name: Configurar timezone en PHP para el frontend
+  ansible.builtin.lineinfile:
+    path: /etc/zabbix/apache.conf
+    regexp: '.*php_value date.timezone.*'
+    line: "        php_value date.timezone {{ zabbix_timezone }}"
+  notify: restart apache2
+
+# ---- Servicios ----
+- name: Asegurar que zabbix-server está habilitado y arrancado
+  ansible.builtin.service:
+    name: zabbix-server
+    state: started
+    enabled: true
+
+- name: Asegurar que apache2 está habilitado y arrancado
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true

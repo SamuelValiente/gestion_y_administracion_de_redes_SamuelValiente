@@ -1,0 +1,31 @@
+#!/bin/bash
+# SNMP extend script para métricas de MySQL via Docker
+
+CONTAINER=$(docker ps -q -f name=wordpress_mysql)
+
+if [ -z "$CONTAINER" ]; then
+    echo "ERROR: contenedor MySQL no encontrado"
+    exit 1
+fi
+
+RESULT=$(docker exec "$CONTAINER" \
+    mysql -u"{{ snmp_mysql_user }}" -p"{{ snmp_mysql_password }}" \
+    -e "SHOW GLOBAL STATUS;" 2>/dev/null)
+
+if [ -z "$RESULT" ]; then
+    echo "ERROR: no se puede conectar a MySQL"
+    exit 1
+fi
+
+extract() {
+    echo "$RESULT" | awk -v key="$1" '$1 == key {print $2}'
+}
+
+echo "connections=${$(extract 'Threads_connected'):-0}"
+echo "queries=${$(extract 'Queries'):-0}"
+echo "slow_queries=${$(extract 'Slow_queries'):-0}"
+echo "uptime=${$(extract 'Uptime'):-0}"
+echo "bytes_received=${$(extract 'Bytes_received'):-0}"
+echo "bytes_sent=${$(extract 'Bytes_sent'):-0}"
+echo "innodb_buffer_pool_reads=${$(extract 'Innodb_buffer_pool_reads'):-0}"
+echo "innodb_buffer_pool_hits=${$(extract 'Innodb_buffer_pool_read_requests'):-0}"

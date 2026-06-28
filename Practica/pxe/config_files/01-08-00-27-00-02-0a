@@ -1,0 +1,8 @@
+DEFAULT install
+PROMPT 0
+TIMEOUT 0
+
+LABEL install
+    MENU LABEL Instalacion Automatica Red Interna
+    KERNEL ubuntu/casper/vmlinuz
+    APPEND initrd=ubuntu/casper/initrd boot=casper netboot=nfs nfsroot=10.0.0.1:/srv/nfs/ubuntu ip=dhcp autoinstall ds=nocloud-net;s=http://10.0.0.1/configs/ ---

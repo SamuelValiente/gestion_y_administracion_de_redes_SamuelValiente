@@ -1,0 +1,17 @@
+# /tftp/pxelinux.cfg/default file
+#
+# PXELinux default boot configuration for network-based Ubuntu installation.
+# Presents a boot menu with a single option (For hotdesks) 
+# Nodes boot via casper live system, get IP via DHCP, and install unattended.
+
+UI menu.c32
+PROMPT 0
+TIMEOUT 30
+MENU TITLE Instalador Automatico de Puestos Hotdesk
+
+DEFAULT hotdesk_install
+
+LABEL hotdesk_install
+    	MENU LABEL Instalacion Automatica HOTDESK (Red Main)
+    	KERNEL ubuntu/casper/vmlinuz
+	    APPEND initrd=ubuntu/casper/initrd boot=casper netboot=nfs nfsroot=192.168.1.1:/srv/nfs/ubuntu ip=dhcp autoinstall ds=nocloud-net;s=http://192.168.1.1/configs/ ---

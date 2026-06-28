@@ -1,0 +1,84 @@
+---
+# ---- Dependencias previas ----
+- name: Instalar dependencias para el repositorio Docker
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+# ---- Repositorio oficial de Docker ----
+- name: Crear directorio para claves GPG
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Descargar clave GPG oficial de Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Añadir repositorio oficial de Docker
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release }} stable
+    state: present
+    filename: docker
+
+# ---- Instalación ----
+- name: Instalar Docker Engine
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - python3-docker
+    state: present
+    update_cache: true
+  notify: restart docker
+
+# ---- Configuración del daemon ----
+- name: Crear directorio de configuración del daemon
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: Desplegar configuración del daemon (daemon.json)
+  ansible.builtin.copy:
+    content: "{{ docker_daemon_config | to_nice_json }}"
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart docker
+
+# ---- Servicio ----
+- name: Asegurar que Docker está habilitado y arrancado
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+# ---- Permisos de usuario ----
+- name: Añadir usuarios al grupo docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+
+# ---- Verificación ----
+- name: Verificar que Docker responde
+  ansible.builtin.command: docker info
+  register: docker_info
+  changed_when: false
+  failed_when: docker_info.rc != 0

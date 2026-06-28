@@ -1,0 +1,25 @@
+---
+# Versión y comunidad SNMP
+snmp_version: "2c"
+snmp_community: "public"
+
+# Puerto estándar SNMP
+snmp_port: 161
+
+# Dirección en la que escucha snmpd (todas las interfaces)
+snmp_listen_address: "udp:161"
+
+# Localización e información del sistema (solo informativo)
+snmp_syslocation: "Gar Enterprise DataCenter"
+snmp_syscontact: "admin@garenterprise.local"
+
+# IPs que tienen permitido hacer consultas SNMP (el servidor Zabbix)
+snmp_allowed_hosts:
+  - 10.0.0.14  # mon01
+
+# Credenciales para el extend de MySQL
+snmp_mysql_user: "monitor"
+snmp_mysql_password: "monitor_pass"
+
+# Nombre del volumen GlusterFS a monitorizar
+snmp_gluster_volume: "vol_compartido"

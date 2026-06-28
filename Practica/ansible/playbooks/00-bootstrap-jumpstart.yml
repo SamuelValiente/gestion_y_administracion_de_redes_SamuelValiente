@@ -1,0 +1,59 @@
+---
+- name: Preparar jumpstart como NAT temporal de aprovisionamiento
+  hosts: jumpstart
+  become: true
+  gather_facts: true
+  roles:
+    - jumpstart
+
+- name: Publicar gateway temporal de aprovisionamiento en la red main
+  hosts: main:!jumpstart
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Usar jumpstart como gateway por defecto temporal
+      ansible.builtin.command:
+        cmd: ip route replace default via 192.168.1.1
+        
+    - name: Backup de resolv.conf original
+      ansible.builtin.copy:
+        src: /etc/resolv.conf
+        dest: /etc/resolv.conf.pre-provision
+        remote_src: true
+        force: false   # no sobreescribir si ya existe el backup
+
+    - name: Apuntar DNS a jumpstart (red main)
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          # Temporal de aprovisionamiento — restaurar desde resolv.conf.pre-provision
+          nameserver 192.168.1.1
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Publicar gateway temporal de aprovisionamiento en la red internal
+  hosts: internal:!jumpstart
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Usar jumpstart como gateway por defecto temporal
+      ansible.builtin.command:
+        cmd: ip route replace default via 10.0.0.1
+    
+    - name: Backup de resolv.conf original
+      ansible.builtin.copy:
+        src: /etc/resolv.conf
+        dest: /etc/resolv.conf.pre-provision
+        remote_src: true
+        force: false
+
+    - name: Apuntar DNS a jumpstart (red internal)
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          # Temporal de aprovisionamiento — restaurar desde resolv.conf.pre-provision
+          nameserver 10.0.0.1
+        owner: root
+        group: root
+        mode: '0644'

@@ -1,0 +1,48 @@
+# Escuchar en todas las interfaces en el puerto 161
+agentAddress {{ snmp_listen_address }}
+
+# Información del sistema
+syslocation {{ snmp_syslocation }}
+syscontact {{ snmp_syscontact }}
+
+# Comunidad de solo lectura, acceso restringido al servidor Zabbix
+{% for host in snmp_allowed_hosts %}
+rocommunity {{ snmp_community }} {{ host }}
+{% endfor %}
+
+# MIBs del sistema base (CPU, memoria, disco, red)
+view systemview included .1.3.6.1.2.1.1       # system
+view systemview included .1.3.6.1.2.1.2       # interfaces
+view systemview included .1.3.6.1.4.1.2021    # UCD-SNMP (CPU, memoria, disco)
+
+# Extender con métricas de disco
+disk / 10%
+disk /var 10%
+
+# Carga del sistema
+load 12 10 5
+
+{% if 'web' in group_names %}
+# ---- Extend: nginx ----
+extend nginx-status /usr/local/bin/snmp_extend_nginx.sh
+{% endif %}
+
+{% if 'worker' in group_names %}
+# ---- Extend: mysql ----
+extend mysql-status /usr/local/bin/snmp_extend_mysql.sh
+{% endif %}
+
+{% if 'lvs' in group_names %}
+# ---- Extend: LVS ----
+extend lvs-status /usr/local/bin/snmp_extend_lvs.sh
+{% endif %}
+
+{% if 'cluster' in group_names %}
+# ---- Extend: GlusterFS ----
+extend gluster-status /usr/local/bin/snmp_extend_gluster.sh
+{% endif %}
+
+{% if 'master' in group_names %}
+# ---- Extend: Docker Swarm ----
+extend swarm-status /usr/local/bin/snmp_extend_swarm.sh
+{% endif %}

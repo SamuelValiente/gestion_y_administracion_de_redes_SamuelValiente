@@ -1,0 +1,10 @@
+# /etc/exports file
+#
+# NFS exports configuration for PXE boot server.
+# Shares the Ubuntu live image directory (/srv/nfs/ubuntu) to both subnets:
+#   - Main network    (192.168.1.0/24)
+#   - Internal network (10.0.0.0/24)
+# Mounted read-only (ro) and synchronous (sync) for safe concurrent node access.
+
+/srv/nfs/ubuntu 192.168.1.0/24(ro,sync,no_subtree_check,nohide)
+/srv/nfs/ubuntu 10.0.0.0/24(ro,sync,no_subtree_check,nohide)

@@ -1,0 +1,30 @@
+---
+# ---- Hostname ----
+- name: Configurar hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Asegurar hostname en /etc/hosts (loopback)
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ inventory_hostname }}"
+    state: present
+
+# ---- /etc/hosts con todos los nodos ----
+- name: Distribuir /etc/hosts con todos los nodos
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: '0644'
+
+# ---- Usuario de servicio ----
+- name: Permitir sudo sin contraseña al usuario de servicio
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ base_service_user }}
+    line: "{{ base_service_user }} ALL=(ALL) NOPASSWD:ALL"
+    create: true
+    mode: '0440'
+    validate: 'visudo -cf %s'
