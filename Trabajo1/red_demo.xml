@@ -1,0 +1,10 @@
+<network>
+  <name>red_demo</name>
+  <bridge name='virbr_demo'/>
+  <forward mode='nat'/>
+  <ip address='192.168.100.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.100.10' end='192.168.100.50'/>
+    </dhcp>
+  </ip>
+</network>
